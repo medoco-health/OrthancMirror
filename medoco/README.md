@@ -14,8 +14,6 @@ The fix proposes the syntaxes already listed in `AcceptedTransferSyntaxes`, and 
 
 Measured: stock Orthanc received 153 of 195 instances as roughly 1 GB before aborting after 5m19s. Patched, it received all 195 as 103 MB in 15.4s. Those numbers come from a build of this patch against Orthanc mainline, before the fork existed; the code here is the same change applied to the 1.13.0 release.
 
-This is worth sending upstream. Orthanc does not take pull requests; contributions go as a Mercurial patch to the [Orthanc Users forum](https://discourse.orthanc-server.org/) or by e-mail to the maintainers. `git format-patch` on the patch commit produces what they need.
-
 ## Branch layout
 
 | branch        | what it is                                                   | who writes to it                    |
