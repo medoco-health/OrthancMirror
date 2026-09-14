@@ -76,10 +76,16 @@ if [[ $PUSH == --push ]]; then
     exit 1
   fi
 
-  # A heuristic, but it catches the usual mistake before an hour of compiling
-  # rather than after it.
-  if ! grep -q "${REGISTRY%%/*}" "${DOCKER_CONFIG:-$HOME/.docker}/config.json" 2>/dev/null; then
-    echo "No credentials for ${REGISTRY%%/*}. Run: docker login ${REGISTRY%%/*}" >&2
+  # Docker stores credentials either inline under "auths" or in a helper named by
+  # "credsStore" or "credHelpers", so any of the three counts as evidence of a
+  # login. Refuse only when the config exists and shows none of them, and say
+  # nothing when there is no config to read: rejecting a valid release after an
+  # hour of compiling is a worse outcome than missing the warning.
+  DOCKER_CONFIG_FILE=${DOCKER_CONFIG:-$HOME/.docker}/config.json
+  if [[ -f $DOCKER_CONFIG_FILE ]] &&
+     ! grep -qE "\"credsStore\"|\"credHelpers\"|${REGISTRY%%/*}" "$DOCKER_CONFIG_FILE"; then
+    echo "No credentials for ${REGISTRY%%/*} in $DOCKER_CONFIG_FILE." >&2
+    echo "Run: docker login ${REGISTRY%%/*}" >&2
     exit 1
   fi
 elif [[ $BRANCH != "$RELEASE_BRANCH" ]]; then
