@@ -258,6 +258,7 @@ namespace Orthanc
     DicomTransferSyntax preferredTransferSyntax_;
     mutable boost::mutex dynamicOptionsMutex_;
     bool isUnknownSopClassAccepted_;
+    bool getScuProposesAcceptedTransferSyntaxes_;
     std::set<DicomTransferSyntax>  acceptedTransferSyntaxes_;
     std::list<std::string>         acceptedSopClasses_;  // ordered; the most 120 common ones first
     bool readOnly_;

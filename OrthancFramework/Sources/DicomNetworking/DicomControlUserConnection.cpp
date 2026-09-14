@@ -249,6 +249,13 @@ namespace Orthanc
 
 
 
+  size_t DicomControlUserConnection::CountTransferSyntaxesThatFit(size_t remainingContexts,
+                                                                  size_t countSopClasses)
+  {
+    return (countSopClasses == 0 ? 0 : remainingContexts / countSopClasses);
+  }
+
+
   void DicomControlUserConnection::SetupPresentationContexts(
     ScuOperationFlags scuOperation,
     const std::set<std::string>& acceptedStorageSopClasses,
@@ -296,6 +303,14 @@ namespace Orthanc
         throw OrthancException(ErrorCode_BadSequenceOfCalls); // the acceptedStorageSopClassUids should always be defined for a C-Get
       }
 
+      if (proposedStorageTransferSyntaxes.empty())
+      {
+        // Checked here because the loop below would simply propose no storage
+        // context at all, and the association would fail later and less clearly.
+        throw OrthancException(ErrorCode_ParameterOutOfRange,
+                               "No transfer syntax provided for the C-Get storage presentation contexts");
+      }
+
       DicomAssociationRole proposedStoreRole = DicomAssociationRole_Scp;
 
       if (parameters_.GetRemoteModality().GetManufacturer() == ModalityManufacturer_SiemensSyngoCT)
@@ -303,9 +318,59 @@ namespace Orthanc
         proposedStoreRole = DicomAssociationRole_Default; // it seems SyngoCT won't accept a C-Store/SCP only and requires both SCU and SCP roles to be proposed
       }
 
-      for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin(); it != acceptedStorageSopClasses.end(); ++it)
+      // An SCP accepts one transfer syntax per presentation context, so listing
+      // several syntaxes in a single context lets the remote modality send
+      // instances in only one of them and forces it to transcode the rest.
+      // Giving each syntax its own context is what lets the peer choose per
+      // instance.
+      //
+      // That costs one context per SOP class per syntax, and an association
+      // holds only MAX_PROPOSED_PRESENTATIONS of them. With many SOP classes
+      // there is not always room for two syntaxes each; when there is not, the
+      // single combined context is proposed instead. It negotiates less well,
+      // but it is what Orthanc proposed before, whereas offering only the first
+      // syntax would leave the peer with less than it used to have.
+      const size_t rounds = CountTransferSyntaxesThatFit(
+        association_->GetRemainingPropositions(), acceptedStorageSopClasses.size());
+
+      if (rounds < 2)
       {
-        association_->ProposePresentationContext(*it, proposedStorageTransferSyntaxes, proposedStoreRole);
+        CLOG(INFO, DICOM) << "C-Get SCU: " << acceptedStorageSopClasses.size()
+                          << " SOP classes leave room for only one transfer syntax "
+                          << "each, so all of them are proposed in one presentation "
+                          << "context per SOP class; the remote modality will have to "
+                          << "transcode every instance not stored in the syntax it picks";
+
+        for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin();
+             it != acceptedStorageSopClasses.end(); ++it)
+        {
+          association_->ProposePresentationContext(*it, proposedStorageTransferSyntaxes,
+                                                   proposedStoreRole);
+        }
+      }
+      else
+      {
+        size_t proposed = 0;
+
+        for (std::list<DicomTransferSyntax>::const_iterator syntax = proposedStorageTransferSyntaxes.begin();
+             syntax != proposedStorageTransferSyntaxes.end() && proposed < rounds;
+             ++syntax, ++proposed)
+        {
+          for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin();
+               it != acceptedStorageSopClasses.end(); ++it)
+          {
+            association_->ProposePresentationContext(*it, *syntax, proposedStoreRole);
+          }
+        }
+
+        if (proposed < proposedStorageTransferSyntaxes.size())
+        {
+          CLOG(WARNING, DICOM) << "C-Get SCU: only " << proposed << " of "
+                               << proposedStorageTransferSyntaxes.size()
+                               << " transfer syntaxes fit in the presentation contexts; "
+                               << "the remote modality will have to transcode instances "
+                               << "stored in the others";
+        }
       }
     }
   }
