@@ -94,6 +94,16 @@ namespace Orthanc
                       uint16_t messageId);
     
   public:
+    /**
+     * Returns how many transfer syntaxes can be given a presentation context of
+     * their own, when "countSopClasses" SOP classes must each be proposed and
+     * "remainingContexts" presentation contexts are still available. A result
+     * below 2 means there is no room to let the peer choose between syntaxes,
+     * and the caller must fall back to one combined context per SOP class.
+     **/
+    static size_t CountTransferSyntaxesThatFit(size_t remainingContexts,
+                                               size_t countSopClasses);
+
     explicit DicomControlUserConnection(const DicomAssociationParameters& params, ScuOperationFlags scuOperation);
 
     // specific constructor for CGet SCU
