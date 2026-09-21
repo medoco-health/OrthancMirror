@@ -36,7 +36,7 @@ RUN cmake /src/OrthancServer \
       -DCMAKE_BUILD_TYPE=Release \
       -DSTATIC_BUILD=ON \
       -DALLOW_DOWNLOADS=ON \
-      -DUSE_SYSTEM_civetweb=OFF \
+      -DUSE_SYSTEM_CIVETWEB=OFF \
     && make -j"${JOBS}" Orthanc \
     && strip /build/Orthanc
 
