@@ -6,11 +6,18 @@ Orthanc is GPLv3. This fork is public because distributing a modified binary obl
 
 ## What we changed
 
-One thing, in two files:
+Modified by Medoco Health in September 2026, against the Orthanc 1.13.0 release. These files differ from upstream:
+
+- `OrthancServer/Sources/ServerContext.cpp` and `ServerContext.h`
+- `OrthancServer/Resources/Configuration.json`
+- `OrthancFramework/Sources/DicomNetworking/DicomControlUserConnection.cpp` and `DicomControlUserConnection.h`
+- `OrthancFramework/UnitTestsSources/FromDcmtkTests.cpp`
+
+Everything under `medoco/` is ours and not part of Orthanc. The change itself:
 
 **Orthanc's C-Get SCU proposed only uncompressed transfer syntaxes.** When Orthanc retrieves a study with C-Get it is also the C-Store SCP receiving it, so it decides which transfer syntaxes are allowed. It offered only LittleEndianExplicit and LittleEndianImplicit, which forced the remote modality to decompress everything before sending. Retrieving JPEG 2000 photographs from our DICOM node inflated a 103 MB study to about 1 GB and timed the association out.
 
-The fix proposes the syntaxes already listed in `AcceptedTransferSyntaxes`, and gives each syntax its own presentation context so the peer can pick per instance. See the commit message on `medoco/main` for the full reasoning, including why the second half is what makes the first half work.
+The fix proposes the syntaxes already listed in `AcceptedTransferSyntaxes`, and gives each syntax its own presentation context so the peer can pick per instance. It is on by default and can be turned off with the `DicomGetScuProposesAcceptedTransferSyntaxes` option. See the commit message on `medoco/main` for the full reasoning, including why the second half is what makes the first half work.
 
 Measured: stock Orthanc received 153 of 195 instances as roughly 1 GB before aborting after 5m19s. Patched, it received all 195 as 103 MB in 15.4s. Those numbers come from a build of this patch against Orthanc mainline, before the fork existed; the code here is the same change applied to the 1.13.0 release.
 
@@ -101,5 +108,5 @@ If upstream has touched the code we patched, the rebase conflicts, which is exac
 ## GPLv3 housekeeping
 
 - The fork is public, and the `org.opencontainers.image.source` and `.revision` labels on every image point at it. That is the source offer.
-- GPLv3 section 5(a) asks that modified files carry prominent notices that they were changed and when. The commit history on `medoco/main` carries that: each change is one commit, attributed and dated, against a named upstream release.
+- GPLv3 section 5(a) asks that the modified work carry prominent notices that it was changed, and when. The "What we changed" section above is that notice: it names every file that differs from upstream, who changed it and when. Keep it up to date whenever a change lands on `medoco/main`.
 - Orthanc's own licence and copyright files are untouched, and must stay that way.
