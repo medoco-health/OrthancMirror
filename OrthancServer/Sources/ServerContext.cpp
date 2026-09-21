@@ -2462,19 +2462,45 @@ namespace Orthanc
     //
     // The order below is the order they are proposed in, and it is also the
     // order in which they are dropped when there are not enough presentation
-    // contexts for all of them. The uncompressed pair therefore comes first on
-    // purpose; the rest follow in DicomTransferSyntax order, which is not a
-    // statement of preference.
-    syntaxes.push_back(DicomTransferSyntax_LittleEndianExplicit);
-    syntaxes.push_back(DicomTransferSyntax_LittleEndianImplicit);
+    // contexts for all of them. The uncompressed pair comes first so that every
+    // instance can always be sent. The compressed syntaxes in common use come
+    // next, ahead of the rest, which follow in DicomTransferSyntax order; that
+    // order puts many rarely used JPEG processes before JPEG-LS and JPEG 2000,
+    // which would otherwise be the first to be dropped.
+    static const DicomTransferSyntax PREFERRED[] =
+    {
+      DicomTransferSyntax_LittleEndianExplicit,
+      DicomTransferSyntax_LittleEndianImplicit,
+      DicomTransferSyntax_JPEG2000LosslessOnly,
+      DicomTransferSyntax_JPEG2000,
+      DicomTransferSyntax_JPEGLSLossless,
+      DicomTransferSyntax_JPEGLSLossy,
+      DicomTransferSyntax_JPEGProcess1,
+      DicomTransferSyntax_JPEGProcess14SV1,
+      DicomTransferSyntax_RLELossless
+    };
+    static const size_t COUNT_PREFERRED = sizeof(PREFERRED) / sizeof(DicomTransferSyntax);
+    static const size_t COUNT_UNCOMPRESSED = 2;
+
+    std::set<DicomTransferSyntax> done;
+
+    for (size_t i = 0; i < COUNT_PREFERRED; i++)
+    {
+      if (i < COUNT_UNCOMPRESSED ||
+          (getScuProposesAcceptedTransferSyntaxes_ &&
+           acceptedTransferSyntaxes_.find(PREFERRED[i]) != acceptedTransferSyntaxes_.end()))
+      {
+        syntaxes.push_back(PREFERRED[i]);
+        done.insert(PREFERRED[i]);
+      }
+    }
 
     if (getScuProposesAcceptedTransferSyntaxes_)
     {
       for (std::set<DicomTransferSyntax>::const_iterator it = acceptedTransferSyntaxes_.begin();
            it != acceptedTransferSyntaxes_.end(); ++it)
       {
-        if (*it != DicomTransferSyntax_LittleEndianExplicit &&
-            *it != DicomTransferSyntax_LittleEndianImplicit)
+        if (done.find(*it) == done.end())
         {
           syntaxes.push_back(*it);
         }
