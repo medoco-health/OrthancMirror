@@ -185,6 +185,14 @@
      "H265TransferSyntaxAccepted"         : true,  // New in Orthanc 1.9.0
   **/
   
+  // Whether Orthanc, when it retrieves instances with C-GET, proposes the
+  // transfer syntaxes listed in "AcceptedTransferSyntaxes" as well as the
+  // uncompressed ones. During a C-GET Orthanc is the C-STORE SCP receiving the
+  // instances, so it decides what may be sent; proposing only uncompressed
+  // transfer syntaxes forces the remote modality to decompress everything
+  // first. Set to false to propose only the uncompressed transfer syntaxes.
+  "DicomGetScuProposesAcceptedTransferSyntaxes" : true,
+
   // Whether Orthanc accepts to act as C-STORE SCP for unknown storage
   // SOP classes (aka. "promiscuous mode")
   "UnknownSopClassAccepted" : false,

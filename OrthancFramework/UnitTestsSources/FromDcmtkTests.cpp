@@ -4164,3 +4164,89 @@ TEST(Toto, DISABLED_Transcode4)
 }
 
 #endif
+
+
+#if ORTHANC_ENABLE_DCMTK_NETWORKING == 1
+
+#include "../Sources/DicomNetworking/DicomControlUserConnection.h"
+
+TEST(DicomControlUserConnection, CountTransferSyntaxesThatFit)
+{
+  // An association holds 128 presentation contexts, and a C-GET proposes the two
+  // Query/Retrieve information models before any storage context.
+  static const size_t REMAINING = 126;
+
+  // A retrieval that knows its SOP classes has room to give every transfer syntax
+  // a context of its own, which is what lets the peer choose per instance.
+  ASSERT_EQ(126u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 1));
+  ASSERT_EQ(31u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 4));
+
+  // 63 SOP classes is the most that still leaves room for a second syntax.
+  ASSERT_EQ(2u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 63));
+  ASSERT_EQ(1u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 64));
+
+  // A C-GET that does not know which SOP classes it needs proposes 120 of them,
+  // so this is the common case: one syntax each, meaning the caller falls back
+  // to proposing only the uncompressed syntaxes.
+  ASSERT_EQ(1u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 120));
+
+  ASSERT_EQ(0u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 200));
+  ASSERT_EQ(0u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 0));
+}
+
+
+TEST(DicomControlUserConnection, GetUncompressedTransferSyntaxes)
+{
+  // What the C-GET falls back to when there is no room for a context per syntax.
+  std::list<DicomTransferSyntax> source;
+  source.push_back(DicomTransferSyntax_LittleEndianExplicit);
+  source.push_back(DicomTransferSyntax_JPEG2000);
+  source.push_back(DicomTransferSyntax_LittleEndianImplicit);
+  source.push_back(DicomTransferSyntax_JPEGLSLossless);
+  source.push_back(DicomTransferSyntax_BigEndianExplicit);
+
+  std::list<DicomTransferSyntax> target;
+  DicomControlUserConnection::GetUncompressedTransferSyntaxes(target, source);
+
+  ASSERT_EQ(3u, target.size());
+  std::list<DicomTransferSyntax>::const_iterator it = target.begin();
+  ASSERT_EQ(DicomTransferSyntax_LittleEndianExplicit, *it++);
+  ASSERT_EQ(DicomTransferSyntax_LittleEndianImplicit, *it++);
+  ASSERT_EQ(DicomTransferSyntax_BigEndianExplicit, *it++);
+
+  // Only compressed syntaxes leaves nothing, and the caller keeps its own list.
+  source.clear();
+  source.push_back(DicomTransferSyntax_JPEG2000);
+  DicomControlUserConnection::GetUncompressedTransferSyntaxes(target, source);
+  ASSERT_TRUE(target.empty());
+}
+
+
+TEST(DicomControlUserConnection, CGetRequiresStorageSopClassesAndTransferSyntaxes)
+{
+  DicomAssociationParameters parameters;
+  parameters.SetRemotePort(2000);
+
+  std::set<std::string> sopClasses;
+  sopClasses.insert(UID_VLPhotographicImageStorage);
+
+  std::list<DicomTransferSyntax> syntaxes;
+  syntaxes.push_back(DicomTransferSyntax_LittleEndianExplicit);
+
+  // Building the association proposes the contexts, and neither of these can
+  // produce a usable one. Both must be refused here rather than leave the C-GET
+  // to fail later with no storage context and nothing explaining why.
+  ASSERT_THROW(DicomControlUserConnection(parameters, ScuOperationFlags_Get,
+                                          std::set<std::string>(), syntaxes),
+               OrthancException);
+
+  ASSERT_THROW(DicomControlUserConnection(parameters, ScuOperationFlags_Get,
+                                          sopClasses, std::list<DicomTransferSyntax>()),
+               OrthancException);
+
+  // The same arguments, both present, build without complaint.
+  ASSERT_NO_THROW(DicomControlUserConnection(parameters, ScuOperationFlags_Get,
+                                             sopClasses, syntaxes));
+}
+
+#endif

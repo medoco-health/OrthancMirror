@@ -94,6 +94,24 @@ namespace Orthanc
                       uint16_t messageId);
     
   public:
+    /**
+     * Returns how many transfer syntaxes can be given a presentation context of
+     * their own, when "countSopClasses" SOP classes must each be proposed and
+     * "remainingContexts" presentation contexts are still available. A result
+     * below 2 means there is no room to let the peer choose between syntaxes,
+     * and the caller falls back to proposing only the uncompressed ones.
+     **/
+    static size_t CountTransferSyntaxesThatFit(size_t remainingContexts,
+                                               size_t countSopClasses);
+
+    /**
+     * Keeps the uncompressed transfer syntaxes of "source", in their order. They
+     * are what a C-Get proposes when there is no room to give every syntax a
+     * presentation context of its own.
+     **/
+    static void GetUncompressedTransferSyntaxes(std::list<DicomTransferSyntax>& target,
+                                                const std::list<DicomTransferSyntax>& source);
+
     explicit DicomControlUserConnection(const DicomAssociationParameters& params, ScuOperationFlags scuOperation);
 
     // specific constructor for CGet SCU

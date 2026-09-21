@@ -671,6 +671,16 @@ namespace Orthanc
 
         isUnknownSopClassAccepted_ = lock.GetConfiguration().GetBooleanParameter("UnknownSopClassAccepted");
 
+        getScuProposesAcceptedTransferSyntaxes_ = lock.GetConfiguration().GetBooleanParameter(
+          "DicomGetScuProposesAcceptedTransferSyntaxes");
+
+        if (!getScuProposesAcceptedTransferSyntaxes_)
+        {
+          CLOG(INFO, DICOM) << "Orthanc C-GET SCU will propose only the uncompressed transfer "
+                            << "syntaxes, so remote modalities must decompress instances before "
+                            << "sending them";
+        }
+
         // New options in Orthanc 1.12.6
         std::list<std::string> acceptedSopClasses;
         std::set<std::string> rejectedSopClasses;
@@ -2432,18 +2442,70 @@ namespace Orthanc
   void ServerContext::GetProposedStorageTransferSyntaxes(std::list<DicomTransferSyntax>& syntaxes) const
   {
     boost::mutex::scoped_lock lock(dynamicOptionsMutex_);
-    
-    // // TODO: investigate: actually, neither Orthanc 1.12.4 nor DCM4CHEE will accept to send a LittleEndianExplicit file
-    // //                    while e.g., Jpeg-LS has been presented (and accepted) as the preferred TS for the C-Store SCP.
-    // // if we have defined IngestTranscoding, let's propose this TS first to avoid any unnecessary transcoding
-    // if (isIngestTranscoding_)
-    // {
-    //   syntaxes.push_back(ingestTransferSyntax_);
-    // }
-    
-    // then, propose the default ones
-    syntaxes.push_back(DicomTransferSyntax_LittleEndianExplicit);
-    syntaxes.push_back(DicomTransferSyntax_LittleEndianImplicit);
+
+    // During a C-Get, Orthanc receives the instances, just as it does when it is
+    // the SCP of a C-Store. Propose everything "AcceptedTransferSyntaxes" allows,
+    // so that a remote modality holding compressed instances can send them as
+    // they are, instead of decompressing them first. Setting
+    // "DicomGetScuProposesAcceptedTransferSyntaxes" to false stops that and leaves
+    // only the uncompressed pair below.
+    //
+    // The uncompressed syntaxes come first, and are proposed even when they have
+    // been removed from "AcceptedTransferSyntaxes": every SCU can produce them,
+    // so they are the fallback that keeps the association usable.
+    //
+    // Proposing more than one syntax here is only useful because
+    // DicomControlUserConnection::SetupPresentationContexts() gives each of them
+    // its own presentation context. An SCP accepts one transfer syntax per
+    // context, so listing several in a single context would let the peer send
+    // instances in only one of them, and force it to transcode the rest.
+    //
+    // The order below is the order they are proposed in, and it is also the
+    // order in which they are dropped when there are not enough presentation
+    // contexts for all of them. The uncompressed pair comes first so that every
+    // instance can always be sent. The compressed syntaxes in common use come
+    // next, ahead of the rest, which follow in DicomTransferSyntax order; that
+    // order puts many rarely used JPEG processes before JPEG-LS and JPEG 2000,
+    // which would otherwise be the first to be dropped.
+    static const DicomTransferSyntax PREFERRED[] =
+    {
+      DicomTransferSyntax_LittleEndianExplicit,
+      DicomTransferSyntax_LittleEndianImplicit,
+      DicomTransferSyntax_JPEG2000LosslessOnly,
+      DicomTransferSyntax_JPEG2000,
+      DicomTransferSyntax_JPEGLSLossless,
+      DicomTransferSyntax_JPEGLSLossy,
+      DicomTransferSyntax_JPEGProcess1,
+      DicomTransferSyntax_JPEGProcess14SV1,
+      DicomTransferSyntax_RLELossless
+    };
+    static const size_t COUNT_PREFERRED = sizeof(PREFERRED) / sizeof(DicomTransferSyntax);
+    static const size_t COUNT_UNCOMPRESSED = 2;
+
+    std::set<DicomTransferSyntax> done;
+
+    for (size_t i = 0; i < COUNT_PREFERRED; i++)
+    {
+      if (i < COUNT_UNCOMPRESSED ||
+          (getScuProposesAcceptedTransferSyntaxes_ &&
+           acceptedTransferSyntaxes_.find(PREFERRED[i]) != acceptedTransferSyntaxes_.end()))
+      {
+        syntaxes.push_back(PREFERRED[i]);
+        done.insert(PREFERRED[i]);
+      }
+    }
+
+    if (getScuProposesAcceptedTransferSyntaxes_)
+    {
+      for (std::set<DicomTransferSyntax>::const_iterator it = acceptedTransferSyntaxes_.begin();
+           it != acceptedTransferSyntaxes_.end(); ++it)
+      {
+        if (done.find(*it) == done.end())
+        {
+          syntaxes.push_back(*it);
+        }
+      }
+    }
   }
   
 

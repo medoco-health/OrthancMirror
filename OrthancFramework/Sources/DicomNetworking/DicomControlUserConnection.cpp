@@ -249,6 +249,31 @@ namespace Orthanc
 
 
 
+  size_t DicomControlUserConnection::CountTransferSyntaxesThatFit(size_t remainingContexts,
+                                                                  size_t countSopClasses)
+  {
+    return (countSopClasses == 0 ? 0 : remainingContexts / countSopClasses);
+  }
+
+
+  void DicomControlUserConnection::GetUncompressedTransferSyntaxes(
+    std::list<DicomTransferSyntax>& target,
+    const std::list<DicomTransferSyntax>& source)
+  {
+    // The same set DicomStoreUserConnection treats as uncompressed.
+    target.clear();
+    for (std::list<DicomTransferSyntax>::const_iterator it = source.begin(); it != source.end(); ++it)
+    {
+      if (*it == DicomTransferSyntax_LittleEndianExplicit ||
+          *it == DicomTransferSyntax_LittleEndianImplicit ||
+          *it == DicomTransferSyntax_BigEndianExplicit)
+      {
+        target.push_back(*it);
+      }
+    }
+  }
+
+
   void DicomControlUserConnection::SetupPresentationContexts(
     ScuOperationFlags scuOperation,
     const std::set<std::string>& acceptedStorageSopClasses,
@@ -296,6 +321,14 @@ namespace Orthanc
         throw OrthancException(ErrorCode_BadSequenceOfCalls); // the acceptedStorageSopClassUids should always be defined for a C-Get
       }
 
+      if (proposedStorageTransferSyntaxes.empty())
+      {
+        // Checked here because the loop below would simply propose no storage
+        // context at all, and the association would fail later and less clearly.
+        throw OrthancException(ErrorCode_ParameterOutOfRange,
+                               "No transfer syntax provided for the C-Get storage presentation contexts");
+      }
+
       DicomAssociationRole proposedStoreRole = DicomAssociationRole_Scp;
 
       if (parameters_.GetRemoteModality().GetManufacturer() == ModalityManufacturer_SiemensSyngoCT)
@@ -303,9 +336,64 @@ namespace Orthanc
         proposedStoreRole = DicomAssociationRole_Default; // it seems SyngoCT won't accept a C-Store/SCP only and requires both SCU and SCP roles to be proposed
       }
 
-      for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin(); it != acceptedStorageSopClasses.end(); ++it)
+      // An SCP accepts one transfer syntax per presentation context, so listing
+      // several syntaxes in a single context lets the remote modality send
+      // instances in only one of them and forces it to transcode the rest.
+      // Giving each syntax its own context is what lets the peer choose per
+      // instance.
+      //
+      // That costs one context per SOP class per syntax, and an association
+      // holds only MAX_PROPOSED_PRESENTATIONS of them. With many SOP classes
+      // there is not always room for two syntaxes each; when there is not, only
+      // the uncompressed syntaxes are proposed, in one context per SOP class.
+      // That is what Orthanc proposed before, and it keeps the association
+      // request small: listing every compressed syntax in each of up to 120
+      // contexts would make it roughly fifteen times larger.
+      const size_t rounds = CountTransferSyntaxesThatFit(
+        association_->GetRemainingPropositions(), acceptedStorageSopClasses.size());
+
+      if (rounds < 2)
       {
-        association_->ProposePresentationContext(*it, proposedStorageTransferSyntaxes, proposedStoreRole);
+        CLOG(INFO, DICOM) << "C-Get SCU: " << acceptedStorageSopClasses.size()
+                          << " SOP classes leave room for only one transfer syntax "
+                          << "each, so only the uncompressed ones are proposed; the "
+                          << "remote modality will have to decompress compressed instances";
+
+        std::list<DicomTransferSyntax> uncompressed;
+        GetUncompressedTransferSyntaxes(uncompressed, proposedStorageTransferSyntaxes);
+
+        for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin();
+             it != acceptedStorageSopClasses.end(); ++it)
+        {
+          // A caller that proposed no uncompressed syntax gets what it asked for.
+          association_->ProposePresentationContext(
+            *it, uncompressed.empty() ? proposedStorageTransferSyntaxes : uncompressed,
+            proposedStoreRole);
+        }
+      }
+      else
+      {
+        size_t proposed = 0;
+
+        for (std::list<DicomTransferSyntax>::const_iterator syntax = proposedStorageTransferSyntaxes.begin();
+             syntax != proposedStorageTransferSyntaxes.end() && proposed < rounds;
+             ++syntax, ++proposed)
+        {
+          for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin();
+               it != acceptedStorageSopClasses.end(); ++it)
+          {
+            association_->ProposePresentationContext(*it, *syntax, proposedStoreRole);
+          }
+        }
+
+        if (proposed < proposedStorageTransferSyntaxes.size())
+        {
+          CLOG(WARNING, DICOM) << "C-Get SCU: only " << proposed << " of "
+                               << proposedStorageTransferSyntaxes.size()
+                               << " transfer syntaxes fit in the presentation contexts; "
+                               << "the remote modality will have to transcode instances "
+                               << "stored in the others";
+        }
       }
     }
   }
