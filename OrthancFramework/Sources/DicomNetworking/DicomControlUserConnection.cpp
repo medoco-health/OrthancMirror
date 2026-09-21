@@ -326,10 +326,11 @@ namespace Orthanc
       //
       // That costs one context per SOP class per syntax, and an association
       // holds only MAX_PROPOSED_PRESENTATIONS of them. With many SOP classes
-      // there is not always room for two syntaxes each; when there is not, the
-      // single combined context is proposed instead. It negotiates less well,
-      // but it is what Orthanc proposed before, whereas offering only the first
-      // syntax would leave the peer with less than it used to have.
+      // there is not always room for two syntaxes each; when there is not, only
+      // the uncompressed syntaxes are proposed, in one context per SOP class.
+      // That is what Orthanc proposed before, and it keeps the association
+      // request small: listing every compressed syntax in each of up to 120
+      // contexts would make it roughly fifteen times larger.
       const size_t rounds = CountTransferSyntaxesThatFit(
         association_->GetRemainingPropositions(), acceptedStorageSopClasses.size());
 
@@ -337,15 +338,28 @@ namespace Orthanc
       {
         CLOG(INFO, DICOM) << "C-Get SCU: " << acceptedStorageSopClasses.size()
                           << " SOP classes leave room for only one transfer syntax "
-                          << "each, so all of them are proposed in one presentation "
-                          << "context per SOP class; the remote modality will have to "
-                          << "transcode every instance not stored in the syntax it picks";
+                          << "each, so only the uncompressed ones are proposed; the "
+                          << "remote modality will have to decompress compressed instances";
+
+        std::list<DicomTransferSyntax> uncompressed;
+        for (std::list<DicomTransferSyntax>::const_iterator syntax = proposedStorageTransferSyntaxes.begin();
+             syntax != proposedStorageTransferSyntaxes.end(); ++syntax)
+        {
+          if (*syntax == DicomTransferSyntax_LittleEndianExplicit ||
+              *syntax == DicomTransferSyntax_LittleEndianImplicit ||
+              *syntax == DicomTransferSyntax_BigEndianExplicit)
+          {
+            uncompressed.push_back(*syntax);
+          }
+        }
 
         for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin();
              it != acceptedStorageSopClasses.end(); ++it)
         {
-          association_->ProposePresentationContext(*it, proposedStorageTransferSyntaxes,
-                                                   proposedStoreRole);
+          // A caller that proposed no uncompressed syntax gets what it asked for.
+          association_->ProposePresentationContext(
+            *it, uncompressed.empty() ? proposedStorageTransferSyntaxes : uncompressed,
+            proposedStoreRole);
         }
       }
       else

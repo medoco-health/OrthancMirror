@@ -99,7 +99,7 @@ namespace Orthanc
      * their own, when "countSopClasses" SOP classes must each be proposed and
      * "remainingContexts" presentation contexts are still available. A result
      * below 2 means there is no room to let the peer choose between syntaxes,
-     * and the caller must fall back to one combined context per SOP class.
+     * and the caller falls back to proposing only the uncompressed ones.
      **/
     static size_t CountTransferSyntaxesThatFit(size_t remainingContexts,
                                                size_t countSopClasses);
