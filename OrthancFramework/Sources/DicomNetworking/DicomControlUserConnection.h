@@ -104,6 +104,14 @@ namespace Orthanc
     static size_t CountTransferSyntaxesThatFit(size_t remainingContexts,
                                                size_t countSopClasses);
 
+    /**
+     * Keeps the uncompressed transfer syntaxes of "source", in their order. They
+     * are what a C-Get proposes when there is no room to give every syntax a
+     * presentation context of its own.
+     **/
+    static void GetUncompressedTransferSyntaxes(std::list<DicomTransferSyntax>& target,
+                                                const std::list<DicomTransferSyntax>& source);
+
     explicit DicomControlUserConnection(const DicomAssociationParameters& params, ScuOperationFlags scuOperation);
 
     // specific constructor for CGet SCU

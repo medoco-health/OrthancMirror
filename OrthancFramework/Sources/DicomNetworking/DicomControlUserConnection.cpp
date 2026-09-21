@@ -256,6 +256,24 @@ namespace Orthanc
   }
 
 
+  void DicomControlUserConnection::GetUncompressedTransferSyntaxes(
+    std::list<DicomTransferSyntax>& target,
+    const std::list<DicomTransferSyntax>& source)
+  {
+    // The same set DicomStoreUserConnection treats as uncompressed.
+    target.clear();
+    for (std::list<DicomTransferSyntax>::const_iterator it = source.begin(); it != source.end(); ++it)
+    {
+      if (*it == DicomTransferSyntax_LittleEndianExplicit ||
+          *it == DicomTransferSyntax_LittleEndianImplicit ||
+          *it == DicomTransferSyntax_BigEndianExplicit)
+      {
+        target.push_back(*it);
+      }
+    }
+  }
+
+
   void DicomControlUserConnection::SetupPresentationContexts(
     ScuOperationFlags scuOperation,
     const std::set<std::string>& acceptedStorageSopClasses,
@@ -342,16 +360,7 @@ namespace Orthanc
                           << "remote modality will have to decompress compressed instances";
 
         std::list<DicomTransferSyntax> uncompressed;
-        for (std::list<DicomTransferSyntax>::const_iterator syntax = proposedStorageTransferSyntaxes.begin();
-             syntax != proposedStorageTransferSyntaxes.end(); ++syntax)
-        {
-          if (*syntax == DicomTransferSyntax_LittleEndianExplicit ||
-              *syntax == DicomTransferSyntax_LittleEndianImplicit ||
-              *syntax == DicomTransferSyntax_BigEndianExplicit)
-          {
-            uncompressed.push_back(*syntax);
-          }
-        }
+        GetUncompressedTransferSyntaxes(uncompressed, proposedStorageTransferSyntaxes);
 
         for (std::set<std::string>::const_iterator it = acceptedStorageSopClasses.begin();
              it != acceptedStorageSopClasses.end(); ++it)

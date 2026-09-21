@@ -4186,12 +4186,39 @@ TEST(DicomControlUserConnection, CountTransferSyntaxesThatFit)
   ASSERT_EQ(1u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 64));
 
   // A C-GET that does not know which SOP classes it needs proposes 120 of them,
-  // so this is the common case: one syntax each, meaning the caller must propose
-  // them in a single combined context rather than drop all but the first.
+  // so this is the common case: one syntax each, meaning the caller falls back
+  // to proposing only the uncompressed syntaxes.
   ASSERT_EQ(1u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 120));
 
   ASSERT_EQ(0u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 200));
   ASSERT_EQ(0u, DicomControlUserConnection::CountTransferSyntaxesThatFit(REMAINING, 0));
+}
+
+
+TEST(DicomControlUserConnection, GetUncompressedTransferSyntaxes)
+{
+  // What the C-GET falls back to when there is no room for a context per syntax.
+  std::list<DicomTransferSyntax> source;
+  source.push_back(DicomTransferSyntax_LittleEndianExplicit);
+  source.push_back(DicomTransferSyntax_JPEG2000);
+  source.push_back(DicomTransferSyntax_LittleEndianImplicit);
+  source.push_back(DicomTransferSyntax_JPEGLSLossless);
+  source.push_back(DicomTransferSyntax_BigEndianExplicit);
+
+  std::list<DicomTransferSyntax> target;
+  DicomControlUserConnection::GetUncompressedTransferSyntaxes(target, source);
+
+  ASSERT_EQ(3u, target.size());
+  std::list<DicomTransferSyntax>::const_iterator it = target.begin();
+  ASSERT_EQ(DicomTransferSyntax_LittleEndianExplicit, *it++);
+  ASSERT_EQ(DicomTransferSyntax_LittleEndianImplicit, *it++);
+  ASSERT_EQ(DicomTransferSyntax_BigEndianExplicit, *it++);
+
+  // Only compressed syntaxes leaves nothing, and the caller keeps its own list.
+  source.clear();
+  source.push_back(DicomTransferSyntax_JPEG2000);
+  DicomControlUserConnection::GetUncompressedTransferSyntaxes(target, source);
+  ASSERT_TRUE(target.empty());
 }
 
 
