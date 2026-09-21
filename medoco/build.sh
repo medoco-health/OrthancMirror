@@ -70,6 +70,19 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 if [[ $PUSH == --push ]]; then
   # Everything below takes about an hour, so the reasons it could not be
   # published are all checked before any of it starts.
+
+  # The local check above misses a tag pushed from another clone. The image is
+  # pushed before the tag, so a clash first noticed at `git push` would already
+  # have overwritten that tag in the registry.
+  remote_tag=0
+  git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null || remote_tag=$?
+  if [[ $remote_tag == 0 ]]; then
+    echo "Git tag ${VERSION} already exists on origin. Bump the patch level." >&2
+    exit 1
+  elif [[ $remote_tag != 2 ]]; then
+    echo "Could not check origin for tag ${VERSION}; refusing to publish." >&2
+    exit 1
+  fi
   if [[ $BRANCH != "$RELEASE_BRANCH" ]]; then
     echo "On '${BRANCH}'. Released builds are cut from '${RELEASE_BRANCH}'." >&2
     echo "Build without --push to try this branch out." >&2
